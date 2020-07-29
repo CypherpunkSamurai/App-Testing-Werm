@@ -50,7 +50,7 @@ jobs:
         sudo npm install -g cordova
 
     - name: Setup build type
-      run: echo "::set-env name=BUILD_TYPE::release"
+      run: echo "::set-env name=BUILD_TYPE::debug"
       env:
         BUILD_TYPE: release
 
