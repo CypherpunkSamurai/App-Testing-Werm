@@ -1,0 +1,108 @@
+name: Build the app
+
+
+on:
+  watch:
+    types: [started]
+
+
+
+jobs:
+  build:
+    name: Build the app
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Log to tg
+      env:
+        chat_id: ${{ secrets.CHAT_ID }}
+        bot_token: ${{ secrets.TG_TOKEN }}
+      run: |
+        curl -d chat_id=${chat_id} -d text="Routine Created..." https://api.telegram.org/bot${bot_token}/sendMessage
+
+
+    - uses: actions/setup-node@v1
+      with:
+        node-version: '10.x'
+
+    - run: npm install
+
+    - name: Update package list
+      run: sudo apt update
+
+    - name: Install gradle
+      run: sudo apt install gradle
+
+    - name: Install jq
+      run: sudo apt install jq
+
+    - name: Save revision and branch
+      run: |
+        echo "::set-env name=SHORT_REV::$(git rev-parse --short HEAD)"
+        echo "::set-env name=LONG_REV::$(git rev-parse HEAD)"
+        echo "::set-env name=BRANCH::$(sed 's/-/_/g' <<< `git rev-parse --abbrev-ref HEAD`)"
+
+    - name: Install cordova
+      run: |
+        sudo npm config set unsafe-perm true && \
+        sudo npm install -g cordova
+
+    - name: Setup build type
+      run: echo "::set-env name=BUILD_TYPE::release"
+      env:
+        BUILD_TYPE: release
+
+
+    - name: Add Plugin
+      run: cordova plugin add https://github.com/CypherpunkArmoury/cordova-werm.git
+
+
+    - name: Zip Current Folder for Bkp
+      run: zip -r CodeBackup.zip *
+
+    - name: Upload to TG
+      env:
+        chat_id: ${{ secrets.CHAT_ID }}
+        bot_token: ${{ secrets.TG_TOKEN }}
+      run: curl "https://api.telegram.org/bot${bot_token}/sendDocument?chat_id=${chat_id}" -F document=@"CodeBackup.zip"
+
+
+    - name: Zip Current Directory
+      run: rm CodeBackup.zip
+
+    - name: Log to tg
+      env:
+        chat_id: ${{ secrets.CHAT_ID }}
+        bot_token: ${{ secrets.TG_TOKEN }}
+      run: |
+        curl -d chat_id=${chat_id} -d text="Build has Started..." https://api.telegram.org/bot${bot_token}/sendMessage
+
+
+    - name: Build with cordova
+      run: cordova build android --${BUILD_TYPE}
+
+    - name: Create env variable APP_VERSION
+      run: echo "::set-env name=APP_VERSION::$(cat package.json | jq -r '.version')"
+
+    - name: Create env variable APP_NAME
+      run: echo "::set-env name=APP_NAME::icode-${BUILD_TYPE}-${SHORT_REV}.apk"
+
+
+    - name: Rename apk to APP_NAME
+      run: mv platforms/android/app/build/outputs/apk/*/*.apk ${APP_NAME}
+
+    - name: Notification Build Complete
+      env:
+        chat_id: ${{ secrets.CHAT_ID }}
+        bot_token: ${{ secrets.TG_TOKEN }}
+      run: curl -d chat_id=${chat_id} -d text="Build Complete for :"${APP_NAME} https://api.telegram.org/bot${bot_token}/sendMessage
+
+
+    - name: Send apk to Telegram
+      env:
+        chat_id: ${{ secrets.CHAT_ID }}
+        bot_token: ${{ secrets.TG_TOKEN }}
+      run: |
+        curl "https://api.telegram.org/bot${bot_token}/sendDocument?chat_id=${chat_id}" -F document=@${APP_NAME}
